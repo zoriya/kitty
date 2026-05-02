@@ -670,13 +670,13 @@ func (self *Loop) DrawSizedText(text string, spec SizedText) {
 }
 
 func (self *Loop) QueueDnDData(cmd DndCommand) IdType {
-	b := strings.Builder{}
-	b.Grow(64)
+	meta := strings.Builder{}
+	meta.Grow(64)
 	as_base64 := cmd.Type == 'r' || cmd.Type == 'p'
-	fmt.Fprintf(&b, "\x1b]%d;t=%c", kitty.DndCode, cmd.Type)
+	fmt.Fprintf(&meta, "t=%c", cmd.Type)
 	add := func(key byte, val int) {
 		if val != 0 {
-			fmt.Fprintf(&b, ":%c=%d", key, val)
+			fmt.Fprintf(&meta, ":%c=%d", key, val)
 		}
 	}
 	add('o', cmd.Operation)
@@ -684,11 +684,12 @@ func (self *Loop) QueueDnDData(cmd DndCommand) IdType {
 	add('y', cmd.Y)
 	add('X', cmd.Xp)
 	add('Y', cmd.Yp)
+	metaStr := meta.String()
+	osc_prefix := fmt.Sprintf("\x1b]%d;", kitty.DndCode)
 	payload := utils.UnsafeBytesToString(cmd.Payload)
 	payload_sz := len(payload)
 	if payload_sz == 0 {
-		b.WriteString("\x1b\\")
-		return self.QueueWriteString(b.String())
+		return self.QueueWriteString(osc_prefix + metaStr + "\x1b\\")
 	}
 	if as_base64 {
 		payload_sz = base64.RawStdEncoding.EncodedLen(payload_sz)
@@ -702,12 +703,7 @@ func (self *Loop) QueueDnDData(cmd DndCommand) IdType {
 		end := i + chunk_size
 		is_last := end >= len(payload)
 		end = min(end, len(payload))
-		if i == 0 {
-			fmt.Fprintf(&b, ":m=%d;", utils.IfElse(is_last, 0, 1))
-			self.QueueWriteString(b.String())
-		} else {
-			self.QueueWriteString(fmt.Sprintf("\x1b]%d;m=%d;", kitty.DndCode, utils.IfElse(is_last, 0, 1)))
-		}
+		self.QueueWriteString(fmt.Sprintf("%s%s:m=%d;", osc_prefix, metaStr, utils.IfElse(is_last, 0, 1)))
 		self.QueueWriteString(payload[i:end])
 		ans = self.QueueWriteString("\x1b\\")
 	}
